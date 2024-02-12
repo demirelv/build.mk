@@ -126,8 +126,8 @@ $(eval $(foreach T,$(target-y), $(eval $(call target-define,$T))))
 $(eval $(foreach L,$(library-y), $(eval $(call library-define,$L))))
 $(eval $(foreach V,$(install-y), $(eval $(call install-define,$V))))
 
-${PROJECT_PACKAGE}:
-	$(Q) ${TAR} -C ${DESTDIR} -cjvf $@ .
+%_pk-post: %/*.tar.bz2
+	$(Q) ${MKDIR} ${DESTDIR}; ${TAR} -xjvf $< --directory=${DESTDIR}
 
 all: $(addsuffix _all, $(proj-y))
 all: $(addsuffix _all, $(dir-y))
@@ -152,10 +152,12 @@ uninstall: $(addsuffix _uninstall, $(proj-y))
 uninstall: $(addsuffix _uninstall, $(dir-y))
 unisstall: $(addsuffix _uninstall, $(subst /,-, $(subst :,-,$(install-y))))
 	@true
-package-pre: $(addsuffix _package, $(proj-y))
+package-pre:
 package-post: package-def
-package-def: ${PROJECT_PACKAGE}
-	@true
+package-def: $(addsuffix _package, $(proj-y)) $(addsuffix _pk-post, $(proj-y))
+	$(Q) ${TAR} -C ${DESTDIR} -cjvf ${PROJECT_PACKAGE} .
+
+checkstyle: $(addsuffix _codestyle, $(proj-y))
 checkstyle: $(addsuffix _codestyle, $(dir-y))
 checkstyle: $(addsuffix _codestyle, $(library-y))
 checkstyle: $(addsuffix _codestyle, $(target-y))
