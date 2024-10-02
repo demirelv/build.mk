@@ -9,7 +9,6 @@ CPP		:= $(CROSS_COMPILE_PREFIX)g++
 CC		:= $(CROSS_COMPILE_PREFIX)gcc
 LD		:= $(CROSS_COMPILE_PREFIX)ld
 AR		:= $(CROSS_COMPILE_PREFIX)ar
-Q		:= 
 RM		:= rm -rf
 MKDIR		:= mkdir -p
 CP		:= cp -rf
@@ -21,9 +20,17 @@ _CPPFLAGS	:= -Wall -Wextra -Werror -pipe -g3 -O2 -fsigned-char -fno-strict-alias
 _CFLAGS		:= -Wall -Wextra -Werror -pipe -g3 -O2 -fsigned-char -fno-strict-aliasing -fPIC -Werror=unused-result $(CFLAGS) $(EXTRA_CFLAGS) -I.
 _LDFLAGS	:= $(LDFLAGS) $(EXTRA_LDFLAGS) -L.
 
-MAKE		:= CPPFLAGS="$(CPPFLAGS)" EXTRA_CPPFLAGS="$(EXTRA_CPPFLAGS)" CFLAGS="$(CFLAGS)" EXTRA_CFLAGS="$(EXTRA_CFLAGS)" LDFLAGS="$(LDFLAGS)" EXTRA_LDFLAGS="$(EXTRA_LDFLAGS)" $(MAKE) --no-print-directory
-MAKEDIR		:= WSDIR="${WSDIR}" PROJECT_DIR="$(PROJECT_DIR)" DESTDIR="$(DESTDIR)" $(MAKE)
+MAKE		:= CPPFLAGS="$(CPPFLAGS)" EXTRA_CPPFLAGS="$(EXTRA_CPPFLAGS)" CFLAGS="$(CFLAGS)" EXTRA_CFLAGS="$(EXTRA_CFLAGS)" LDFLAGS="$(LDFLAGS)" EXTRA_LDFLAGS="$(EXTRA_LDFLAGS)" $(MAKE)
 
+ifneq ($(V)$(VERBOSE),)
+    Q =
+    MAKE += V="$(V)$(VERBOSE)"
+else
+    Q = @
+    MAKE += --no-print-directory
+endif
+
+MAKEDIR		:= WSDIR="${WSDIR}" PROJECT_DIR="$(PROJECT_DIR)" DESTDIR="$(DESTDIR)" $(MAKE)
 
 _depends_c	= $(CC) $(_CFLAGS) $($1-cflags-y) $($1-incs) -M $$< > $$@.d
 _compile_c	= $(CC) $(_CFLAGS) $($1-cflags-y) $($1-incs) -c $$< -o $$@
@@ -153,10 +160,8 @@ endif
 endef
 
 define install-define
-$(subst /,-, $(dir $(word 2, $(subst :, ,$1)))):
-	$(Q)$(MKDIR) ${DESTDIR}${PREFIX}/$(dir $(word 2, $(subst :, ,$1)))
-$(addsuffix _install, $(subst /,-, $(subst :,-, $1))):$(subst /,-, $(dir $(word 2, $(subst :, ,$1))))
-	$(Q) echo INSTALL $(word 1, $(subst :, ,$1)); $(if $(wildcard ${OUTDIR}/$(word 1, $(subst :, ,$1))), $(CP) ${OUTDIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)), $(CP) ${PROJECT_DIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)))
+$(addsuffix _install, $(subst /,-, $(subst :,-, $1))):
+	$(Q) echo INSTALL $(word 1, $(subst :, ,$1)); $(MKDIR) ${DESTDIR}${PREFIX}/$(dir $(word 2, $(subst :, ,$1))); $(if $(wildcard ${OUTDIR}/$(word 1, $(subst :, ,$1))), $(CP) ${OUTDIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)), $(CP) ${PROJECT_DIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)))
 $(addsuffix _uninstall, $(subst /,-, $(subst :,-, $1))):
 	$(Q) echo REMOVE $(word 1, $(subst :, ,$1)); $(RM) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1))/$(word 1, $(subst :, ,$1))
 endef
