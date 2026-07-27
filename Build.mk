@@ -63,7 +63,10 @@ $(addsuffix _uninstall, $1):
 $(addsuffix _codestyle, $1):
 	$(Q) $(CD) $1 && $(MAKE) WSDIR=$(CURDIR) checkstyle
 $(addsuffix _package, $1):
-	$(Q) $(CD) $1 && $(MAKE) WSDIR=$(CURDIR) package
+	$(Q) $(CD) $1 && $(MAKE) WSDIR=$(CURDIR) PROJECT_NAME=$1 PROJECT_PACKAGE=$1.tar.bz2 package
+$(addsuffix _pk-post, $1): $(addsuffix _package, $1)
+	$(Q) echo install $1/$1.tar.bz2 ${DESTDIR}
+	$(Q) ${MKDIR} ${DESTDIR}; ${TAR} -xjvf $1/$1.tar.bz2 --directory=${DESTDIR}
 endef
 
 define depends-define
@@ -160,8 +163,10 @@ endif
 endef
 
 define install-define
-$(addsuffix _install, $(subst /,-, $(subst :,-, $1))):
-	$(Q) echo INSTALL $(word 1, $(subst :, ,$1)); $(MKDIR) ${DESTDIR}${PREFIX}/$(dir $(word 2, $(subst :, ,$1))); $(if $(wildcard ${OUTDIR}/$(word 1, $(subst :, ,$1))), $(CP) ${OUTDIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)), $(CP) ${PROJECT_DIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)))
+$(subst /,-, $(dir $(word 2, $(subst :, ,$1)))):
+	$(Q)$(MKDIR) ${DESTDIR}${PREFIX}/$(dir $(word 2, $(subst :, ,$1)))
+$(addsuffix _install, $(subst /,-, $(subst :,-, $1))):$(subst /,-, $(dir $(word 2, $(subst :, ,$1))))
+	$(Q) echo INSTALL $(word 1, $(subst :, ,$1)); $(if $(wildcard ${OUTDIR}/$(word 1, $(subst :, ,$1))), $(CP) ${OUTDIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)), $(CP) ${PROJECT_DIR}/$(word 1, $(subst :, ,$1)) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1)))
 $(addsuffix _uninstall, $(subst /,-, $(subst :,-, $1))):
 	$(Q) echo REMOVE $(word 1, $(subst :, ,$1)); $(RM) ${DESTDIR}${PREFIX}/$(word 2, $(subst :, ,$1))/$(word 1, $(subst :, ,$1))
 endef
@@ -171,9 +176,6 @@ $(eval $(foreach D,$(dir-y),$(eval $(call dir-define,$D))))
 $(eval $(foreach T,$(target-y), $(eval $(call target-define,$T))))
 $(eval $(foreach L,$(library-y), $(eval $(call library-define,$L))))
 $(eval $(foreach V,$(install-y), $(eval $(call install-define,$V))))
-
-%_pk-post: %/*.tar.bz2
-	$(Q) ${MKDIR} ${DESTDIR}; ${TAR} -xjvf $< --directory=${DESTDIR}
 
 all: $(addsuffix _all, $(proj-y))
 all: $(addsuffix _all, $(dir-y))
@@ -201,7 +203,50 @@ unisstall: $(addsuffix _uninstall, $(subst /,-, $(subst :,-,$(install-y))))
 package-pre:
 package-post: package-def
 package-def: $(addsuffix _package, $(proj-y)) $(addsuffix _pk-post, $(proj-y))
+ifneq ($(package-tar-y),n)
+	$(Q) echo create ${PROJECT_PACKAGE} for ${PROJECT_NAME}
 	$(Q) ${TAR} -C ${DESTDIR} -cjvf ${PROJECT_PACKAGE} .
+endif
+
+# release — sadece alt projeleri paketleyen genel repo'da (proj-y dolu) tanımlı;
+# yaprak projelerde yok. Her RELEASE_PROJS projesini temiz derleyip
+# <proj>_package tar'ını üretir, RELEASE_DIR'e kopyalar, RELEASE_ROOTFS'a açar
+# ve rootfs'ten tek birleşik RELEASE_TAR oluşturur.
+#
+# Repo Makefile'ında override edilir (include Build.mk'den ÖNCE):
+#   RELEASE_PROJS    alt proje listesi        (default: tüm proj-y)
+#   RELEASE_NAME     birleşik paket adı
+#   RELEASE_VER      versiyon                 (default: YYYY.MM.DD)
+#   RELEASE_ARCH     noarch|amd64|arm64       (default: amd64)
+#   RELEASE_EXCLUDES tar --exclude'ları (örn. secret env dosyaları)
+#
+# DİKKAT: DESTDIR'i komut satırından geçirme — alt-make'in package hedefine
+# yayılıp yanlış dizini tar'latır.
+RELEASE_PROJS	?= $(proj-y)
+RELEASE_NAME	?= $(PROJECT_NAME)
+RELEASE_VER	?= $(shell date +%Y.%m.%d)
+RELEASE_ARCH	?= amd64
+RELEASE_DIR	?= $(CURDIR)/release
+RELEASE_ROOTFS	:= $(RELEASE_DIR)/rootfs
+RELEASE_TAR	:= $(RELEASE_DIR)/$(RELEASE_NAME)-$(RELEASE_VER).$(RELEASE_ARCH).tar.bz2
+RELEASE_EXCLUDES ?=
+
+ifneq ($(strip $(proj-y)),)
+.PHONY: release
+release:
+	$(Q) $(RM) $(RELEASE_DIR)
+	$(Q) $(MKDIR) $(RELEASE_ROOTFS)
+	$(Q) set -e; for p in $(RELEASE_PROJS); do \
+		echo "RELEASE $$p"; \
+		$(RM) $$p/install $$p/$$p.tar.bz2; \
+		$(MAKE) $${p}_clean $${p}_all $${p}_package; \
+		$(CP) $$p/$$p.tar.bz2 $(RELEASE_DIR)/; \
+		$(TAR) -xjf $(RELEASE_DIR)/$$p.tar.bz2 --directory=$(RELEASE_ROOTFS); \
+	done
+	$(Q) echo "RELEASE $(notdir $(RELEASE_TAR))"
+	$(Q) $(TAR) --numeric-owner --owner=0 --group=0 $(RELEASE_EXCLUDES) \
+		-cjf $(RELEASE_TAR) --directory=$(RELEASE_ROOTFS) .
+endif
 
 checkstyle: $(addsuffix _codestyle, $(proj-y))
 checkstyle: $(addsuffix _codestyle, $(dir-y))
@@ -211,4 +256,3 @@ checkstyle: $(addsuffix _codestyle, $(target-y))
 
 %: %-pre %-def %-post
 	@true
-
