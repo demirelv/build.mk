@@ -32,15 +32,21 @@ endif
 
 MAKEDIR		:= WSDIR="${WSDIR}" PROJECT_DIR="$(PROJECT_DIR)" DESTDIR="$(DESTDIR)" $(MAKE)
 
-_depends_c	= $(CC) $(_CFLAGS) $($1-cflags-y) $($1-incs) -M $$< > $$@.d
-_compile_c	= $(CC) $(_CFLAGS) $($1-cflags-y) $($1-incs) -c $$< -o $$@
+# Header dependencies are emitted as a side effect of the compile (-MMD) and
+# fed back in via -include, down in c-define. The old separate -M pass
+# compiled every file twice AND wrote a dep file whose target was the bare
+# basename ("foo.o") instead of the real path under OUTDIR, so nothing ever
+# matched -- and the .d files were never included anyway. Net effect: a
+# header change did not trigger a rebuild, and binaries mixing old and new
+# struct layouts were produced silently. -MT pins the target, -MP keeps a
+# deleted header from breaking the build.
+_compile_c	= $(CC) $(_CFLAGS) $($1-cflags-y) $($1-incs) -MMD -MP -MF $$@.d -MT $$@ -c $$< -o $$@
 _compile_cpp	= $(CPP) $(_CPPFLAGS) $($1-cppflags-y) $($1-incs) -c $$< -o $$@
 _link_cpp	= $(CPP) $($1-objs) -o $$@ ${_LDFLAGS} $($1-ldflags-y) $($1-libps) $($1-library-y)
 _link_c		= $(CC) $($1-objs) -o $$@ ${_LDFLAGS} $($1-ldflags-y) $($1-libps) $($1-library-y)
 _link_so_c	= $(CC) -shared $($1-objs) -o $$@ ${_LDFLAGS} $($1-ldflags-y) $($1-libps) $($1-library-y)
 _link_so_cpp	= $(CPP) -shared $($1-objs) -o $$@ ${_LDFLAGS} $($1-ldflags-y) $($1-libps) $($1-library-y)
 
-depends_c	= echo "$(_depends_c)" > $$@.d.cmd ; $(_depends_c)
 compile_c	= echo "$(_compile_c)" > $$@.cmd ; $(_compile_c)
 compile_cpp	= echo "$(_compile_cpp)" > $$@.cmd ; $(_compile_cpp)
 link_c		= echo "$(_link_c)" > $$@.cmd ; $(_link_c)
@@ -107,7 +113,9 @@ $(eval $1-objs		= $(patsubst %.c,${OUTDIR}/.$1/%.o,$($1-source-y)))
 #${OUTDIR}/.$1:
 #	$(Q)$(MKDIR) $$@
 ${OUTDIR}/.$1/%.o: %.c
-	$(Q) echo CC $$<; $(MKDIR) $$(dir $$@); $(depends_c); $(compile_c)
+	$(Q) echo CC $$<; $(MKDIR) $$(dir $$@); $(compile_c)
+# Absent on the first build; that is fine, everything compiles anyway.
+-include $(patsubst %.c,${OUTDIR}/.$1/%.o.d,$($1-source-y))
 endef
 
 define cpp-define
