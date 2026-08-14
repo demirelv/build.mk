@@ -41,7 +41,9 @@ MAKEDIR		:= WSDIR="${WSDIR}" PROJECT_DIR="$(PROJECT_DIR)" DESTDIR="$(DESTDIR)" $
 # struct layouts were produced silently. -MT pins the target, -MP keeps a
 # deleted header from breaking the build.
 _compile_c	= $(CC) $(_CFLAGS) $($1-cflags-y) $($1-incs) -MMD -MP -MF $$@.d -MT $$@ -c $$< -o $$@
-_compile_cpp	= $(CPP) $(_CPPFLAGS) $($1-cppflags-y) $($1-incs) -c $$< -o $$@
+# C++ tarafinda bagimlilik takibi HIC yoktu -- C'deki gibi bozuk degil, yok.
+# Ayni sonuc: header degisikligi yeniden derlemiyor.
+_compile_cpp	= $(CPP) $(_CPPFLAGS) $($1-cppflags-y) $($1-incs) -MMD -MP -MF $$@.d -MT $$@ -c $$< -o $$@
 _link_cpp	= $(CPP) $($1-objs) -o $$@ ${_LDFLAGS} $($1-ldflags-y) $($1-libps) $($1-library-y)
 _link_c		= $(CC) $($1-objs) -o $$@ ${_LDFLAGS} $($1-ldflags-y) $($1-libps) $($1-library-y)
 _link_so_c	= $(CC) -shared $($1-objs) -o $$@ ${_LDFLAGS} $($1-ldflags-y) $($1-libps) $($1-library-y)
@@ -124,6 +126,8 @@ ${OUTDIR}/.$1:
 	$(Q)$(MKDIR) $$@
 ${OUTDIR}/.$1/%.o: %.cpp
 	$(Q) echo CPP $$<; $(MKDIR) $$(dir $$@); $(compile_cpp)
+# Absent on the first build; that is fine, everything compiles anyway.
+-include $(patsubst %.cpp,${OUTDIR}/.$1/%.o.d,$($1-source-y))
 endef
 
 define base-define
